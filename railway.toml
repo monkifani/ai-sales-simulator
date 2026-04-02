@@ -1,0 +1,9 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "python bot.py"
+healthcheckPath = "/api/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "always"
