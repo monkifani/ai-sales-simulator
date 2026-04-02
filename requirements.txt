@@ -1,0 +1,4 @@
+aiogram==3.13.1
+aiohttp==3.10.11
+google-genai==1.69.0
+sift-stack-py

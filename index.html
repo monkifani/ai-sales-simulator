@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gemini AI Sales Simulator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #0d0d0f;
+      color: #e8e8f0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      overflow: hidden;
+    }
+
+    /* Animated background glow */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 30%, rgba(99, 60, 220, 0.15) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 80% 70%, rgba(30, 150, 255, 0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .card {
+      position: relative;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+      animation: fadeUp 0.7s ease both;
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99, 60, 220, 0.18);
+      border: 1px solid rgba(99, 60, 220, 0.4);
+      border-radius: 999px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: #a78bfa;
+      text-transform: uppercase;
+      margin-bottom: 1.6rem;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #a78bfa;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 6vw, 3rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #ffffff 0%, #a78bfa 50%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+    }
+
+    .subtitle {
+      font-size: 1.05rem;
+      color: #9090a8;
+      line-height: 1.65;
+      margin-bottom: 2.4rem;
+      max-width: 420px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Feature pills */
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 2.6rem;
+    }
+    .feature {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12.5px;
+      color: #b0b0c8;
+    }
+
+    /* CTA Button */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #6d28d9, #2563eb);
+      color: #fff;
+      text-decoration: none;
+      font-size: 1.05rem;
+      font-weight: 700;
+      padding: 16px 40px;
+      border-radius: 14px;
+      box-shadow: 0 0 32px rgba(99, 60, 220, 0.4), 0 4px 20px rgba(0,0,0,0.4);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      letter-spacing: 0.01em;
+    }
+    .btn:hover {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 0 48px rgba(99, 60, 220, 0.6), 0 8px 28px rgba(0,0,0,0.4);
+    }
+    .btn:active { transform: scale(0.98); }
+
+    .btn svg { width: 22px; height: 22px; flex-shrink: 0; }
+
+    /* Stats row */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 2.8rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .stat-label { font-size: 11px; color: #606078; margin-top: 2px; }
+    .stat-value { font-size: 1.3rem; font-weight: 700; color: #d0d0e8; }
+
+    /* Footer */
+    .footer {
+      margin-top: 2.4rem;
+      font-size: 11.5px;
+      color: #404058;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">
+      <span class="badge-dot"></span>
+      Powered by Gemini AI
+    </div>
+
+    <h1>AI Sales Simulator</h1>
+
+    <p class="subtitle">
+      Тренируй навыки продаж в диалоге с реалистичными AI-клиентами.
+      Получай честный аудит по 9 модулям после каждой сессии.
+    </p>
+
+    <div class="features">
+      <span class="feature">🎭 3 типа клиентов</span>
+      <span class="feature">🌐 Русский / Қазақша</span>
+      <span class="feature">📦 Любая ниша</span>
+      <span class="feature">🧑‍⚖️ Аудит по 9 модулям</span>
+      <span class="feature">📧 Отчёт на email</span>
+    </div>
+
+    <a class="btn" href="https://t.me/ProductAI_Senior_Bot" target="_blank" rel="noopener">
+      <!-- Telegram icon -->
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+      </svg>
+      Открыть в Telegram
+    </a>
+
+    <div class="stats">
+      <div>
+        <div class="stat-value">6</div>
+        <div class="stat-label">сообщений / сессия</div>
+      </div>
+      <div>
+        <div class="stat-value">9</div>
+        <div class="stat-label">модулей аудита</div>
+      </div>
+      <div>
+        <div class="stat-value">3</div>
+        <div class="stat-label">роли клиентов</div>
+      </div>
+    </div>
+
+    <p class="footer">@ProductAI_Senior_Bot · Gemini 2.5 Flash</p>
+  </div>
+</body>
+</html>
