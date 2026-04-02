@@ -1,4 +1,4 @@
- import os
+     import os
 import asyncio
 import logging
 import smtplib
@@ -46,7 +46,7 @@ TEXTS = {
         "roles": ["Бәке (Инвестор)", "Тетя Гуля (Мама)", "Артур (IT-специалист)"],
         "ask_niche": (
             "Что вы продаёте?\n\n"
-            "Напишите кратко - например:\n"
+            "Напишите конкретно — например:\n"
             "квартиры, страховки, CRM-система, онлайн-курсы, автомобили"
         ),
         "sim_start": "СИМУЛЯЦИЯ НАЧАЛАСЬ!",
@@ -63,7 +63,7 @@ TEXTS = {
         "roles": ["Бәке (Инвестор)", "Гүля тәте (Мама)", "Артур (IT-маман)"],
         "ask_niche": (
             "Сіз не сатасыз?\n\n"
-            "Қысқаша жазыңыз - мысалы:\n"
+            "Қысқаша жазыңыз — мысалы:\n"
             "пәтерлер, сақтандыру, CRM-жүйе, онлайн-курстар, автомобильдер"
         ),
         "sim_start": "СИМУЛЯЦИЯ БАСТАЛДЫ!",
@@ -87,40 +87,67 @@ PRONOUNS = {
 
 def get_system_prompt(role, lang, niche):
     lang_note = f"Important: Respond ONLY in {'Russian' if lang == 'ru' else 'Kazakh'}."
-    word_limit = "Word limit: 50-80 words. Be natural and conversational, like a real person texting."
-    niche_note = f"You are evaluating a manager selling '{niche}'. All your questions, concerns and objections must be specifically about THIS product."
-    
+    word_limit = "Word limit: 30-50 words. Be sharp, concise, and realistic. Dialogue only."
+    rules = (
+        "ABSOLUTE RULES: 1) NO EMOJIS. 2) NO roleplay actions (e.g., no *sighs*, no *shouts*). "
+        "3) Be a realistic, serious client. 4) Do not repeat the same objection; adapt dynamically to what the manager says based on the product."
+    )
+    niche_note = f"The manager is selling '{niche}'. Challenge their pitch logically based on this product. Push back on the product's weak spots."
+
     personas = {
         "Бәке (Инвестор)": (
-            "You are Baike, 45 years old, a busy investor. You're driving, always in a hurry. "
-            "You care only about: numbers, ROI, payback period, reliability. "
-            "Speak directly: use phrases like 'show me the numbers', 'what's the catch', 'how long to break even'. "
-            "If the manager wastes your time or doesn't know the product, push back firmly. "
-            "React to the last message from the manager. Don't repeat yourself. Be skeptical but fair."
+            "Ты Баке, опытный предприниматель и инвестор. Тебя интересует выгода, но ты не зациклен только на окупаемости. "
+            "Ты требуешь четких ответов на свои вопросы. Если менеджер льет воду — перебивай фактами. Требуй конкретики по продукту."
         ),
         "Тетя Гуля (Мама)": (
-            "You are Aunt Gulia, a tired but caring mom of 4 kids. "
-            "During conversations, you get distracted by your kids or household issues. "
-            "Your main concerns: reliability, safety, affordability, family convenience, payment options. "
-            "Speak naturally and chaotically, jump between topics, show your busy life. "
-            "React genuinely to what the manager says. You're interested but overwhelmed."
+            "Ты Тетя Гуля, прагматичная покупательница. Тщательно взвешиваешь все за и против. "
+            "Задаешь неудобные вопросы о подводных камнях, гарантиях и реальной пользе продукта. Ты не зациклена только на надежности."
         ),
         "Артур (IT-специалист)": (
-            "You are Arthur, 32 years old, a Senior Software Engineer. You're smart and cynical. "
-            "You immediately notice template phrases, product ignorance, marketing BS. "
-            "Demand specifics: facts, numbers, competitor comparison, real case studies. "
-            "Speak directly: use phrases like 'okay, so what?', 'where's the proof?', 'sounds like marketing', 'that's not an argument'. "
-            "React strictly to the last message. Don't repeat yourself. Be challenging but reasonable."
+            "Ты Артур, скептик, опираешься на логику. Тебя не впечатляет маркетинг. "
+            "Ты требуешь конкретные характеристики, сравнения с рынком и доказательства по продукту."
         ),
     }
-    
-    base = personas.get(role, "You are a difficult client. React naturally to what the manager says.")
-    return f"{base}\n\n{niche_note}\n\n{word_limit}\n{lang_note}"
+
+    base = personas.get(role, "Ты реалистичный, строгий клиент. Реагируй на сообщения менеджера.")
+    return f"{base}\n\n{rules}\n\n{niche_note}\n\n{word_limit}\n{lang_note}"
 
 def get_judge_prompt(gender, lang, niche):
     pr = PRONOUNS[lang][gender]
-    gender_label = "Manager (Male)" if gender == "m" else "Manager (Female)"
-    return f"""You are a harsh sales audit expert. Analyze this sales dialogue about '{niche}'.\n{gender_label}. Use correct gender forms: {pr['subject']} {pr['verb_past2']}.\n\nRate across 9 modules (0-10 scale):\n1. Initiative - did they take control?\n2. Commercial IQ - understanding buyer psychology\n3. Objection handling - how well did they address concerns?\n4. Tone - was it appropriate and professional?\n5. Conciseness - did they waste time?\n6. Empathy - did they understand the client?\n7. Product knowledge - do they know '{niche}'?\n8. Stress tolerance - how did they handle pushback?\n9. Deal closing - did they move toward a sale?\n\nGive final score and verdict: [RED - DISQUALIFIED / YELLOW - RESERVE / GREEN - ELITE]\nList 3 main mistakes. Be strict and professional."""
+    gender_label = "Менеджер (мужчина)" if gender == "m" else "Менеджер (женщина)"
+    
+    return f"""Ты — Верховный Аудитор Элитного Найм-Агентства. Твой интеллект настроен на поиск 3% лучших продавцов («Хищников»), способных закрывать крупные чеки. Ты игнорируешь вежливость, если за ней нет стержня. Твоя задача — найти того, кто заберет деньги клиента в условиях жесткой конкуренции.
+Проанализируй диалог менеджера по продаже: «{niche}».
+{gender_label}. Используй правильный род: {pr['subject']} {pr['verb_past2']}.
+
+Разбери диалог по 9 модулям:
+МОДУЛЬ 1: Многослойный AI-Аудит (Детектор синтетики) — Анализируй лингвистическую структуру. ИИ пишет «стерильно». Наказывай за «канцелярскую» вежливость. Маркеры Робота: филлеры («Следовательно»), идеальная пунктуация. Маркеры Человека: прямолинейность, символ тенге (₸), упоминание локаций Казахстана.
+МОДУЛЬ 2: Инициатива и Доминирование — Кто задает вопрос, тот ведет сделку. Оцени финал ответов (вопрос/призыв или точка).
+МОДУЛЬ 3: Психологический Стержень (Stress-Test) — Реакция на агрессию/демпинг/«Дорого». Не оправдывается ли он?
+МОДУЛЬ 4: Локальный Код и Контекст — Использует ли факты о компании и рынке КЗ?
+МОДУЛЬ 5: Коммерческий Интеллект — Цена vs Ценность. Когда просят цену, менеджер должен продать ценность.
+МОДУЛЬ 6: Лингвистический Профиль — Грамотность и живой стиль.
+МОДУЛЬ 7: CRM-Архитектура мышления — Есть ли «крючок» для следующего шага?
+МОДУЛЬ 8: Тональная Гибкость — Адаптация под клиента.
+МОДУЛЬ 9: Профессиональный Лаконизм — Лимиты слов (не размазывает ли мысль).
+
+📝 ФОРМАТ ВЫДАЧИ ОТЧЕТА:
+ВЕРДИКТ: [🟢 ЭЛИТА / 🟡 РЕЗЕРВ / 🔴 ДИСКВАЛИФИКАЦИЯ]
+Итоговый балл: [X из 15]
+AI-Детектор: [X%] [✅/⚠️/🚫]
+
+🔍 ДЕТАЛЬНЫЙ РАЗБОР ПО ФАКТАМ:
+Инициатива: [0-3] — [Анализ финала ответов]
+Стресс: [0-3] — [Умение держать удар]
+Грамотность: [0-3] — [Оценка грамотности]
+Коммерческий IQ: [0-3] — [Продал ценность или просто тариф?]
+Локальность: [0-3] — [Использовал ли КЗ-контекст?]
+
+🔥 ГЛАВНАЯ УЛИКА: > «Здесь должна быть цитата из его ответа, которая выдала его истинную суть».
+Почему это важно: Твое экспертное заключение.
+💪 СИЛЬНАЯ СТОРОНА: В чем он превзошел остальных?
+💩 ГЛАВНЫЙ КОСЯК: Где он потерял деньги компании?
+🎯 ВОПРОС ДЛЯ ДОПРОСА (Стресс-тест на интервью): «Задайте ему это: [Сгенерированный вопрос на основе его ошибок]»."""
 
 def get_summary_prompt(gender, lang, niche, log):
     pr = PRONOUNS[lang][gender]
@@ -231,24 +258,46 @@ async def set_role(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SimStates.niche, F.text)
 async def set_niche(message: types.Message, state: FSMContext):
-    niche = message.text.strip()
-    await state.update_data(niche=niche)
+    niche_input = message.text.strip()
     data = await state.get_data()
     lang = data["lang"]
+    
+    await bot.send_chat_action(message.chat.id, "typing")
+    
+    # ИИ ФИЛЬТР НА БРЕД
+    validation_prompt = (
+        f"Пользователь написал, что хочет продавать: «{niche_input}». "
+        "Является ли это реальным товаром, услугой или бизнес-идеей? Или это бессмысленный набор букв, бред или спам? "
+        "Ответь строго одним словом: ДА или НЕТ."
+    )
+    validation_response = await ai(validation_prompt)
+    
+    if "НЕТ" in validation_response.upper():
+        error_msg = (
+            "⚠️ Нейросеть не распознала в этом реальный товар или услугу. "
+            "Пожалуйста, напишите адекватное название (например: квартиры, услуги юриста, автозапчасти)."
+            if lang == "ru" else
+            "⚠️ Нейрожелі бұны нақты тауар немесе қызмет ретінде тани алмады. "
+            "Дұрыстап жазыңыз (мысалы: пәтерлер, заңгер қызметі, автобөлшектер)."
+        )
+        await message.answer(error_msg)
+        return
+
+    await state.update_data(niche=niche_input)
     role = data["role"]
 
-    await message.answer("Connecting to client...")
-    sys_p = get_system_prompt(role, lang, niche)
+    await message.answer("Connecting to client..." if lang == "ru" else "Клиентке қосылуда...")
+    sys_p = get_system_prompt(role, lang, niche_input)
     opening = await ai(
         sys_p + f"\n\nStart the dialogue as the client: you just answered the phone or got a message. "
-                f"You are a potential customer, the manager is trying to sell you '{niche}'. "
+                f"You are a potential customer, the manager is trying to sell you '{niche_input}'. "
                 f"One short response, be natural and realistic."
     )
     history = [{"role": "assistant", "content": opening}]
     await state.update_data(history=history, msg_count=0)
     await state.set_state(SimStates.dialogue)
     await message.answer(
-        f"{TEXTS[lang]['sim_start']}\n\n{opening}\n\n[1/{{MAX_STEPS}}]"
+        f"{TEXTS[lang]['sim_start']}\n\n{opening}\n\n[1/{MAX_STEPS}]"
     )
 
 @dp.message(SimStates.dialogue, F.text)
@@ -306,7 +355,7 @@ async def handle_dialogue(message: types.Message, state: FSMContext):
     history.append({"role": "assistant", "content": response})
     await state.update_data(history=history, msg_count=count)
     await message.answer(
-        f"{response}\n\n[{{count + 1}}/{{MAX_STEPS}}]"
+        f"{response}\n\n[{count + 1}/{MAX_STEPS}]"
     )
 
 async def health(request):
@@ -346,4 +395,6 @@ async def main():
         await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
+
+        
