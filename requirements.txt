@@ -1,4 +1,5 @@
-aiogram==3.13.1
-aiohttp==3.10.11
-google-genai==1.69.0
-sift-stack-py
+aiogram==3.15.0
+fastapi==0.115.6
+uvicorn==0.34.0
+google-genai==1.14.0
+python-multipart==0.0.20
