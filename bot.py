@@ -32,8 +32,18 @@ IS_PROD = os.getenv("IS_PROD") == "1"
 IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT"))
 PORT = int(os.getenv("PORT", "8080" if (IS_PROD or IS_RAILWAY) else "8009"))
 REPLIT_DOMAIN = os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip()
+RENDER_DOMAIN = os.getenv("RENDER_EXTERNAL_URL", "")  # Render автоматически дает это
 WEBHOOK_PATH = "/api/tgwebhook"
-WEBHOOK_URL = f"https://{REPLIT_DOMAIN}{WEBHOOK_PATH}" if IS_PROD else None
+
+# Определяем домен для вебхука
+if RENDER_DOMAIN:
+    WEBHOOK_URL = f"{RENDER_DOMAIN}{WEBHOOK_PATH}"
+elif REPLIT_DOMAIN:
+    WEBHOOK_URL = f"https://{REPLIT_DOMAIN}{WEBHOOK_PATH}"
+elif IS_PROD:
+    WEBHOOK_URL = None  # Нужно задать вручную
+else:
+    WEBHOOK_URL = None
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 MODEL_ID = "gemini-2.5-flash"
@@ -1619,9 +1629,19 @@ async def on_startup():
         await bot.set_webhook(WEBHOOK_URL)
 
 
+@app.on_event("startup")
+async def on_startup():
+    if WEBHOOK_URL:
+        await bot.set_webhook(WEBHOOK_URL)
+        logging.info(f"Webhook set: {WEBHOOK_URL}")
+    else:
+        logging.warning("No WEBHOOK_URL, bot won't receive updates via webhook!")
+        
 if __name__ == "__main__":
     import uvicorn
-    if IS_PROD:
+    if IS_PROD or IS_RAILWAY or os.getenv("RENDER"):
+        # На Render/Railway - webhook через FastAPI
         uvicorn.run(app, host="0.0.0.0", port=PORT)
     else:
+        # Локально - polling
         asyncio.run(dp.start_polling(bot))
