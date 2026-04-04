@@ -250,7 +250,7 @@ TEXTS = {
         "end_user_f": "Ты прошла симуляцию. Полный результат отправлен руководству.",
         "progress": "Реплика {current} из {total}",
         "too_short": "Слишком короткое сообщение. Напишите нормальное предложение.",
-        "company_registered": "Компания зарегистрирована.\n\nВаш код для менеджеров: <code>{code}</code>\n\nОтправьте этот код вашим менеджерам.",
+       "company_registered": "Компания зарегистрирована.\n\nВаш код для менеджеров: <code>{code}</code>\n\nОтправьте этот код вашим менеджерам для присоединения.",
         "joined_company": "Вы присоединились к компании: <b>{name}</b>",
         "invalid_code": "Неверный код компании или лимит участников исчерпан.",
         "ask_company_name": "Введите название вашей компании:",
@@ -584,7 +584,7 @@ async def generate_response(prompt_or_history, system_instruction: str = None, t
 
         result = response.text.strip()
         # Чистим артефакты
-        result = re.sub(r'<thinking>.*?</thinking>\s*', '', result, flags=re.DOTALL).strip()
+    result = clean_thinking_tags(result)
         result = re.sub(r'\*[^*]+\*', '', result).strip()
         result = result.replace('\u00ab', '"').replace('\u00bb', '"')
         result = result.replace('\u2014', '-').replace('\u2013', '-')
@@ -1001,7 +1001,7 @@ async def set_niche(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data["lang"]
 
-    if len(niche_input) < 2:
+   if len(niche_input) < 2 or len(niche_input) > 200:
         await message.answer(TEXTS[lang]["too_short"])
         return
 
@@ -1117,9 +1117,7 @@ async def handle_dialogue(message: types.Message, state: FSMContext):
             run_ai_detection(manager_messages),
         )
 
-        clean_judge_result = re.sub(
-            r'<thinking>.*?</thinking>\s*', '', judge_result, flags=re.DOTALL
-        ).strip()
+       clean_judge_result = clean_thinking_tags(judge_result)
 
         score = extract_score_from_verdict(clean_judge_result)
         ai_detect_percent = ai_detect_result["percent"]
