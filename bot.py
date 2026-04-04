@@ -1,17 +1,18 @@
-     import os
+import os
 import asyncio
 import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from google import genai
+from google.genai import types as genai_types
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,7 +31,8 @@ WEBHOOK_URL = f"https://{REPLIT_DOMAIN}{WEBHOOK_PATH}" if IS_PROD else None
 INDEX_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_ID = "gemini-2.5-flash"
+# Используем flash, но с мощным контекстом он будет работать как Pro
+MODEL_ID = "gemini-2.5-flash" 
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -47,11 +49,11 @@ TEXTS = {
         "ask_niche": (
             "Что вы продаёте?\n\n"
             "Напишите конкретно — например:\n"
-            "квартиры, страховки, CRM-система, онлайн-курсы, автомобили"
+            "квартиры, страховки, CRM-система, онлайн-курсы"
         ),
-        "sim_start": "СИМУЛЯЦИЯ НАЧАЛАСЬ!",
-        "sim_end": "СИМУЛЯЦИЯ ЗАВЕРШЕНА",
-        "analyzing": "Идет анализ вашего диалога...",
+        "sim_start": "🔥 СИМУЛЯЦИЯ НАЧАЛАСЬ!\n\nМенеджер, ваш выход. Клиент на связи:",
+        "sim_end": "🛑 СИМУЛЯЦИЯ ЗАВЕРШЕНА",
+        "analyzing": "🧠 Верховный Аудитор анализирует диалог...",
         "end_user_m": "Отлично! Ты прошел симуляцию.\n\nТвой полный результат отправлен руководству!",
         "end_user_f": "Отлично! Ты прошла симуляцию.\n\nТвой полный результат отправлен руководству!",
     },
@@ -61,106 +63,128 @@ TEXTS = {
         "gender_f": "Әйел",
         "choose_role": "Симуляция үшін клиент рөлін таңдаңыз:",
         "roles": ["Бәке (Инвестор)", "Гүля тәте (Мама)", "Артур (IT-маман)"],
-        "ask_niche": (
-            "Сіз не сатасыз?\n\n"
-            "Қысқаша жазыңыз — мысалы:\n"
-            "пәтерлер, сақтандыру, CRM-жүйе, онлайн-курстар, автомобильдер"
-        ),
-        "sim_start": "СИМУЛЯЦИЯ БАСТАЛДЫ!",
-        "sim_end": "СИМУЛЯЦИЯ АЯҚТАЛДЫ",
-        "analyzing": "Сіздің диалогы талданып жатыр...",
+        "ask_niche": "Сіз не сатасыз?\n\nҚысқаша жазыңыз — мысалы:\nпәтерлер, сақтандыру, CRM-жүйе",
+        "sim_start": "🔥 СИМУЛЯЦИЯ БАСТАЛДЫ!\n\nМенеджер, бастаңыз. Клиент байланыста:",
+        "sim_end": "🛑 СИМУЛЯЦИЯ АЯҚТАЛДЫ",
+        "analyzing": "🧠 Аудитор диалогты талдап жатыр...",
         "end_user_m": "Керемет! Сен симуляциядан өттің.\n\nТолық нәтижең тексерушіге жіберілді!",
         "end_user_f": "Керемет! Сен симуляциядан өттің.\n\nТолық нәтижең тексерушіге жіберілді!",
     }
 }
 
-PRONOUNS = {
-    "ru": {
-        "m": {"subject": "он", "verb_past": "справился", "verb_past2": "показал"},
-        "f": {"subject": "она", "verb_past": "справилась", "verb_past2": "показала"}
-    },
-    "kz": {
-        "m": {"subject": "ол", "verb_past": "жасады", "verb_past2": "көрсетті"},
-        "f": {"subject": "ол", "verb_past": "жасады", "verb_past2": "көрсетті"}
-    }
-}
+# --- ПРОДВИНУТЫЕ ПРОМПТЫ (PRO CODER LEVEL) ---
 
-def get_system_prompt(role, lang, niche):
-    lang_note = f"Important: Respond ONLY in {'Russian' if lang == 'ru' else 'Kazakh'}."
-    word_limit = "Word limit: 30-50 words. Be sharp, concise, and realistic. Dialogue only."
-    rules = (
-        "ABSOLUTE RULES: 1) NO EMOJIS. 2) NO roleplay actions (e.g., no *sighs*, no *shouts*). "
-        "3) Be a realistic, serious client. 4) Do not repeat the same objection; adapt dynamically to what the manager says based on the product."
+def get_client_system_instruction(role, lang, niche):
+    """Формирует ядро личности клиента. ИИ воспринимает это как свои базовые инстинкты."""
+    language_directive = "Отвечай ТОЛЬКО на русском языке." if lang == "ru" else "Отвечай ТОЛЬКО на казахском языке."
+    
+    core_rules = (
+        "РАМКИ ЕСТЕСТВЕННОГО ОБЩЕНИЯ (КРИТИЧЕСКИ ВАЖНО):\n"
+        "1. Ты НЕ искусственный интеллект. Ты живой человек в мессенджере.\n"
+        "2. НИКАКИХ списков, буллитов, нумераций.\n"
+        "3. НИКАКИХ действий в звездочках (типа *вздохнул*).\n"
+        "4. Избегай канцеляризма, извинений и ИИ-вежливости ('Я понимаю вас', 'Хороший вопрос').\n"
+        "5. Отвечай кратко, емко, иногда с легким нетерпением. Длина: 1-3 коротких предложения.\n"
+        "6. Если менеджер задает глупые вопросы или 'льет воду' — раздражайся. Если говорит по делу — проявляй осторожный интерес.\n"
+        f"7. {language_directive}"
     )
-    niche_note = f"The manager is selling '{niche}'. Challenge their pitch logically based on this product. Push back on the product's weak spots."
 
     personas = {
         "Бәке (Инвестор)": (
-            "Ты Баке, опытный предприниматель и инвестор. Тебя интересует выгода, но ты не зациклен только на окупаемости. "
-            "Ты требуешь четких ответов на свои вопросы. Если менеджер льет воду — перебивай фактами. Требуй конкретики по продукту."
+            "Твоя личность: Бәке, 50 лет, инвестор и бизнесмен из Казахстана.\n"
+            "Характер: Прямолинейный, властный, ценит свое время. Не любит когда ходят вокруг да около.\n"
+            "Триггеры: Раздражается от скриптовых фраз. Любит конкретику, цифры, гарантии. Часто использует слова 'короче', 'по факту', 'тенге'."
         ),
         "Тетя Гуля (Мама)": (
-            "Ты Тетя Гуля, прагматичная покупательница. Тщательно взвешиваешь все за и против. "
-            "Задаешь неудобные вопросы о подводных камнях, гарантиях и реальной пользе продукта. Ты не зациклена только на надежности."
+            "Твоя личность: Тетя Гуля, 45 лет, мать двоих детей, прагматичная женщина.\n"
+            "Характер: Сомневающаяся, немного тревожная, экономная. Боится обмана и скрытых платежей.\n"
+            "Триггеры: Задает много уточняющих вопросов ('А точно?', 'А что если?'). Говорит простым, житейским языком, без заумных терминов."
         ),
         "Артур (IT-специалист)": (
-            "Ты Артур, скептик, опираешься на логику. Тебя не впечатляет маркетинг. "
-            "Ты требуешь конкретные характеристики, сравнения с рынком и доказательства по продукту."
+            "Твоя личность: Артур, 28 лет, сеньор-разработчик.\n"
+            "Характер: Циничный, душнила, мыслит аналитически. Ненавидит маркетологов и 'успешный успех'.\n"
+            "Триггеры: Сразу видит манипуляции. Требует пруфы, технические детали и сравнения с конкурентами."
         ),
     }
 
-    base = personas.get(role, "Ты реалистичный, строгий клиент. Реагируй на сообщения менеджера.")
-    return f"{base}\n\n{rules}\n\n{niche_note}\n\n{word_limit}\n{lang_note}"
+    base_persona = personas.get(role, "Ты обычный, недоверчивый клиент.")
+    context = f"Контекст: Менеджер пытается продать тебе продукт/услугу: «{niche}». Веди себя соответственно своей роли и продукту."
 
-def get_judge_prompt(gender, lang, niche):
-    pr = PRONOUNS[lang][gender]
-    gender_label = "Менеджер (мужчина)" if gender == "m" else "Менеджер (женщина)"
+    return f"{core_rules}\n\n{base_persona}\n\n{context}"
+
+def get_judge_system_instruction(gender, lang, niche):
+    """Аудитор с паттерном Chain of Thought (размышление перед ответом)."""
+    pr_subject = "он" if gender == "m" else "она"
+    pr_verb = "показал" if gender == "m" else "показала"
     
-    return f"""Ты — Верховный Аудитор Элитного Найм-Агентства. Твой интеллект настроен на поиск 3% лучших продавцов («Хищников»), способных закрывать крупные чеки. Ты игнорируешь вежливость, если за ней нет стержня. Твоя задача — найти того, кто заберет деньги клиента в условиях жесткой конкуренции.
-Проанализируй диалог менеджера по продаже: «{niche}».
-{gender_label}. Используй правильный род: {pr['subject']} {pr['verb_past2']}.
+    return f"""Ты — Верховный Аудитор Элитного Найм-Агентства. Твоя цель — отсеивать слабых продавцов и находить 'Хищников'.
+Твоя задача — жестко, цинично и профессионально проанализировать диалог менеджера (продает: «{niche}»).
+Менеджер — человек ({pr_subject} {pr_verb}).
 
-Разбери диалог по 9 модулям:
-МОДУЛЬ 1: Многослойный AI-Аудит (Детектор синтетики) — Анализируй лингвистическую структуру. ИИ пишет «стерильно». Наказывай за «канцелярскую» вежливость. Маркеры Робота: филлеры («Следовательно»), идеальная пунктуация. Маркеры Человека: прямолинейность, символ тенге (₸), упоминание локаций Казахстана.
-МОДУЛЬ 2: Инициатива и Доминирование — Кто задает вопрос, тот ведет сделку. Оцени финал ответов (вопрос/призыв или точка).
-МОДУЛЬ 3: Психологический Стержень (Stress-Test) — Реакция на агрессию/демпинг/«Дорого». Не оправдывается ли он?
-МОДУЛЬ 4: Локальный Код и Контекст — Использует ли факты о компании и рынке КЗ?
-МОДУЛЬ 5: Коммерческий Интеллект — Цена vs Ценность. Когда просят цену, менеджер должен продать ценность.
-МОДУЛЬ 6: Лингвистический Профиль — Грамотность и живой стиль.
-МОДУЛЬ 7: CRM-Архитектура мышления — Есть ли «крючок» для следующего шага?
-МОДУЛЬ 8: Тональная Гибкость — Адаптация под клиента.
-МОДУЛЬ 9: Профессиональный Лаконизм — Лимиты слов (не размазывает ли мысль).
+КРИТИЧЕСКОЕ ТРЕБОВАНИЕ К МЫШЛЕНИЮ (CHAIN OF THOUGHT):
+Прежде чем писать отчет, ты ОБЯЗАН провести скрытый анализ в тегах <thinking>...</thinking>.
+Внутри тегов <thinking> рассуждай:
+1. Кто вел диалог? Задавал ли менеджер вопросы в конце своих реплик?
+2. Как менеджер реагировал на отказы? Слился или отработал?
+3. Говорил ли менеджер штампами или продавал ценность?
 
-📝 ФОРМАТ ВЫДАЧИ ОТЧЕТА:
+После блока <thinking> выдай отчет СТРОГО в следующем формате (без markdown-кода, просто текст):
+
 ВЕРДИКТ: [🟢 ЭЛИТА / 🟡 РЕЗЕРВ / 🔴 ДИСКВАЛИФИКАЦИЯ]
 Итоговый балл: [X из 15]
-AI-Детектор: [X%] [✅/⚠️/🚫]
 
-🔍 ДЕТАЛЬНЫЙ РАЗБОР ПО ФАКТАМ:
-Инициатива: [0-3] — [Анализ финала ответов]
-Стресс: [0-3] — [Умение держать удар]
-Грамотность: [0-3] — [Оценка грамотности]
-Коммерческий IQ: [0-3] — [Продал ценность или просто тариф?]
-Локальность: [0-3] — [Использовал ли КЗ-контекст?]
+Детальный разбор:
+• Инициатива: [0-3] — [Краткий комментарий]
+• Стресс: [0-3] — [Краткий комментарий]
+• Коммерческий IQ: [0-3] — [Краткий комментарий]
+• Локальность (КЗ контекст): [0-3] — [Краткий комментарий]
+• Грамотность: [0-3] — [Краткий комментарий]
 
-🔥 ГЛАВНАЯ УЛИКА: > «Здесь должна быть цитата из его ответа, которая выдала его истинную суть».
-Почему это важно: Твое экспертное заключение.
-💪 СИЛЬНАЯ СТОРОНА: В чем он превзошел остальных?
-💩 ГЛАВНЫЙ КОСЯК: Где он потерял деньги компании?
-🎯 ВОПРОС ДЛЯ ДОПРОСА (Стресс-тест на интервью): «Задайте ему это: [Сгенерированный вопрос на основе его ошибок]»."""
+🔥 ГЛАВНАЯ УЛИКА: «[Точная цитата менеджера из диалога, где он ошибся или блеснул]»
+Почему это важно: [Твой жесткий экспертный комментарий]
 
-def get_summary_prompt(gender, lang, niche, log):
-    pr = PRONOUNS[lang][gender]
-    lang_name = "Russian" if lang == "ru" else "Kazakh"
-    gender_word = "male" if gender == "m" else "female"
-    return (
-        f"Write a short (4 sentences) encouraging feedback to a manager who sold '{niche}' "
-        f"in {lang_name}. "
-        f"Manager is {gender_word}, use correct grammar ({pr['verb_past']}, {pr['verb_past2']}). "
-        f"Use informal 'you'. "
-        f"Praise one specific action from the dialogue and point out one area for improvement. "
-        f"No scores or verdicts.\n\nDialogue:\n{log}"
-    )
+💪 СИЛЬНАЯ СТОРОНА: [В чем менеджер хорош]
+💩 ГЛАВНЫЙ КОСЯК: [Где менеджер потерял деньги/клиента]
+
+🎯 ВОПРОС НА СОБЕСЕДОВАНИИ: «[Провокационный вопрос менеджеру на основе его ошибок]»"""
+
+# --- ЯДРО ИИ: РАБОТА С API ---
+
+async def generate_response(prompt_or_history, system_instruction: str = None, temperature: float = 0.7):
+    """
+    Универсальная функция вызова Gemini. 
+    Если передана строка — обрабатываем как обычный запрос.
+    Если передан список словарей — обрабатываем как историю диалога.
+    """
+    try:
+        config = genai_types.GenerateContentConfig(
+            temperature=temperature,
+        )
+        if system_instruction:
+            config.system_instruction = system_instruction
+
+        # Если передаем историю диалога в нативном формате Gemini
+        if isinstance(prompt_or_history, list):
+            contents = []
+            for msg in prompt_or_history:
+                # В Gemini роли: 'user' и 'model'
+                role = "user" if msg["role"] == "manager" else "model"
+                contents.append(genai_types.Content(role=role, parts=[genai_types.Part.from_text(text=msg["content"])]))
+        else:
+            contents = prompt_or_history
+
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=MODEL_ID,
+            contents=contents,
+            config=config
+        )
+        return response.text.strip()
+    except Exception as e:
+        logging.error(f"AI error: {e}")
+        return "Связь потеряна. Попробуйте еще раз."
+
+# --- ЛОГИКА БОТА ---
 
 class SimStates(StatesGroup):
     language = State()
@@ -169,53 +193,11 @@ class SimStates(StatesGroup):
     niche = State()
     dialogue = State()
 
-def build_prompt(sys_prompt, history):
-    text = sys_prompt + "\n\nDialogue history:\n"
-    for m in history:
-        label = "Manager" if m["role"] == "user" else "Client"
-        text += f"{label}: {m['content']}\n"
-    text += "Client:"
-    return text
-
-async def ai(prompt: str) -> str:
-    try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=MODEL_ID,
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        logging.error(f"AI error: {e}")
-        return "Connection lost, please try again."
-
-def send_email(subject: str, report_text: str):
-    if not GMAIL_PASS:
-        logging.warning("GMAIL_PASSWORD not set — email skipped")
-        return
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = ADMIN_EMAIL
-        msg["To"] = ADMIN_EMAIL
-        msg["Subject"] = subject
-        msg.attach(MIMEText(report_text, "plain", "utf-8"))
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(ADMIN_EMAIL, GMAIL_PASS)
-        server.send_message(msg)
-        server.quit()
-        logging.info(f"Email sent: {subject}")
-    except Exception as e:
-        logging.error(f"Email error: {e}")
-
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
-            InlineKeyboardButton(text="🇰🇿 Қазақша", callback_data="lang_kz")
-        ]
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"), InlineKeyboardButton(text="🇰🇿 Қазақша", callback_data="lang_kz")]
     ])
     await message.answer("Choose language / Тілді таңдаңыз:", reply_markup=kb)
     await state.set_state(SimStates.language)
@@ -224,35 +206,27 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def set_lang(call: types.CallbackQuery, state: FSMContext):
     lang = call.data.split("_")[1]
     await state.update_data(lang=lang)
-    t = TEXTS[lang]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=t["gender_m"], callback_data="gender_m"),
-            InlineKeyboardButton(text=t["gender_f"], callback_data="gender_f")
-        ]
+        [InlineKeyboardButton(text=TEXTS[lang]["gender_m"], callback_data="gender_m"), InlineKeyboardButton(text=TEXTS[lang]["gender_f"], callback_data="gender_f")]
     ])
-    await call.message.edit_text(t["choose_gender"], reply_markup=kb)
+    await call.message.edit_text(TEXTS[lang]["choose_gender"], reply_markup=kb)
     await state.set_state(SimStates.gender)
 
 @dp.callback_query(F.data.startswith("gender_"))
 async def set_gender(call: types.CallbackQuery, state: FSMContext):
     gender = call.data.split("_")[1]
     await state.update_data(gender=gender)
-    data = await state.get_data()
-    lang = data["lang"]
-    t = TEXTS[lang]
+    lang = (await state.get_data())["lang"]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=r, callback_data=f"role_{r}")] for r in t["roles"]
+        [InlineKeyboardButton(text=r, callback_data=f"role_{r}")] for r in TEXTS[lang]["roles"]
     ])
-    await call.message.edit_text(t["choose_role"], reply_markup=kb)
+    await call.message.edit_text(TEXTS[lang]["choose_role"], reply_markup=kb)
     await state.set_state(SimStates.role)
 
 @dp.callback_query(F.data.startswith("role_"))
 async def set_role(call: types.CallbackQuery, state: FSMContext):
-    role = call.data.replace("role_", "")
-    await state.update_data(role=role)
-    data = await state.get_data()
-    lang = data["lang"]
+    await state.update_data(role=call.data.replace("role_", ""))
+    lang = (await state.get_data())["lang"]
     await call.message.edit_text(TEXTS[lang]["ask_niche"])
     await state.set_state(SimStates.niche)
 
@@ -264,137 +238,110 @@ async def set_niche(message: types.Message, state: FSMContext):
     
     await bot.send_chat_action(message.chat.id, "typing")
     
-    # ИИ ФИЛЬТР НА БРЕД
-    validation_prompt = (
-        f"Пользователь написал, что хочет продавать: «{niche_input}». "
-        "Является ли это реальным товаром, услугой или бизнес-идеей? Или это бессмысленный набор букв, бред или спам? "
-        "Ответь строго одним словом: ДА или НЕТ."
-    )
-    validation_response = await ai(validation_prompt)
+    # Валидация ниши
+    validation_prompt = f"Пользователь продает: «{niche_input}». Это реальный товар/услуга? Ответь строго: ДА или НЕТ."
+    validation_response = await generate_response(validation_prompt, temperature=0.1)
     
     if "НЕТ" in validation_response.upper():
-        error_msg = (
-            "⚠️ Нейросеть не распознала в этом реальный товар или услугу. "
-            "Пожалуйста, напишите адекватное название (например: квартиры, услуги юриста, автозапчасти)."
-            if lang == "ru" else
-            "⚠️ Нейрожелі бұны нақты тауар немесе қызмет ретінде тани алмады. "
-            "Дұрыстап жазыңыз (мысалы: пәтерлер, заңгер қызметі, автобөлшектер)."
-        )
+        error_msg = "⚠️ Напишите адекватное название (например: квартиры, услуги юриста)." if lang == "ru" else "⚠️ Дұрыстап жазыңыз (мысалы: пәтерлер)."
         await message.answer(error_msg)
         return
 
     await state.update_data(niche=niche_input)
-    role = data["role"]
-
-    await message.answer("Connecting to client..." if lang == "ru" else "Клиентке қосылуда...")
-    sys_p = get_system_prompt(role, lang, niche_input)
-    opening = await ai(
-        sys_p + f"\n\nStart the dialogue as the client: you just answered the phone or got a message. "
-                f"You are a potential customer, the manager is trying to sell you '{niche_input}'. "
-                f"One short response, be natural and realistic."
-    )
-    history = [{"role": "assistant", "content": opening}]
+    
+    # Генерация первой реплики клиента
+    sys_inst = get_client_system_instruction(data["role"], lang, niche_input)
+    opening_prompt = "Начни диалог. Ты только что поднял трубку или открыл сообщение. Напиши 1 короткую реплику."
+    
+    opening = await generate_response(opening_prompt, system_instruction=sys_inst, temperature=0.8)
+    
+    # История хранит 'manager' (пользователь) и 'client' (ИИ)
+    history = [{"role": "client", "content": opening}]
     await state.update_data(history=history, msg_count=0)
     await state.set_state(SimStates.dialogue)
-    await message.answer(
-        f"{TEXTS[lang]['sim_start']}\n\n{opening}\n\n[1/{MAX_STEPS}]"
-    )
+    await message.answer(f"{TEXTS[lang]['sim_start']}\n\n<b>{data['role']}:</b>\n{opening}", parse_mode="HTML")
 
 @dp.message(SimStates.dialogue, F.text)
 async def handle_dialogue(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    lang = data["lang"]
-    gender = data.get("gender", "m")
-    role = data["role"]
-    niche = data.get("niche", "product")
-    history = data["history"]
-    count = data.get("msg_count", 0) + 1
-    history.append({"role": "user", "content": message.text})
+    lang, gender, role, niche, history, count = data["lang"], data["gender"], data["role"], data["niche"], data["history"], data.get("msg_count", 0) + 1
+    
+    history.append({"role": "manager", "content": message.text})
     await bot.send_chat_action(message.chat.id, "typing")
-    await asyncio.sleep(1.5)
 
     if count >= MAX_STEPS:
-        await message.answer(
-            f"{TEXTS[lang]['sim_end']}\n\n{TEXTS[lang]['analyzing']}"
-        )
-        full_log = "\n".join([
-            f"{'Manager' if m['role'] == 'user' else 'Client'}: {m['content']}"
-            for m in history
-        ])
+        await message.answer(f"{TEXTS[lang]['sim_end']}\n\n{TEXTS[lang]['analyzing']}")
+        
+        # Формируем лог для Аудитора
+        full_log = "\n".join([f"{'Менеджер' if m['role'] == 'manager' else 'Клиент'}: {m['content']}" for m in history])
+        
+        # Аудитор с Chain of Thought
+        judge_sys = get_judge_system_instruction(gender, lang, niche)
+        judge_prompt = f"ПРОТОКОЛ ДИАЛОГА:\n{full_log}\n\nВыполни анализ и выдай отчет согласно инструкции."
+        
+        # Резюме для юзера
+        summary_prompt = f"Напиши 3 ободряющих предложения обратной связи для менеджера. Без оценок. Хвали за одно действие, укажи на одну ошибку. Диалог:\n{full_log}"
+        
         judge_result, user_summary = await asyncio.gather(
-            ai(f"{get_judge_prompt(gender, lang, niche)}\n\nDIALOGUE LOG:\n{full_log}"),
-            ai(get_summary_prompt(gender, lang, niche, full_log))
+            generate_response(judge_prompt, system_instruction=judge_sys, temperature=0.7),
+            generate_response(summary_prompt, temperature=0.7)
         )
+
+        # Вырезаем теги <thinking> из отчета для почты, чтобы руководство видело только чистый отчет (по желанию, можно оставить)
+        import re
+        clean_judge_result = re.sub(r'<thinking>.*?</thinking>\s*', '', judge_result, flags=re.DOTALL)
 
         await message.answer(user_summary)
-        end_key = "end_user_m" if gender == "m" else "end_user_f"
-        await message.answer(TEXTS[lang][end_key])
+        await message.answer(TEXTS[lang]["end_user_m" if gender == "m" else "end_user_f"])
 
-        gender_label = "Male" if gender == "m" else "Female"
-        user_name = message.from_user.full_name or "Unknown"
-        user_id = message.from_user.id
-        subject = f"SALES AUDIT | {user_name} | {niche} | {role}"
+        # Отправка на почту
+        subject = f"SALES AUDIT | {message.from_user.full_name} | {niche}"
         body = (
-            f"Manager: {user_name} (Telegram ID: {user_id})\n"
-            f"Product: {niche}\n"
-            f"Client Role: {role}\n"
-            f"Language: {'Russian' if lang == 'ru' else 'Kazakh'}\n"
-            f"Manager Gender: {gender_label}\n"
-            f"{'─' * 50}\n\n"
-            f"DIALOGUE LOG:\n{full_log}\n\n"
-            f"{'─' * 50}\n\n"
-            f"PERFORMANCE AUDIT:\n{judge_result}"
+            f"Менеджер: {message.from_user.full_name} (ID: {message.from_user.id})\n"
+            f"Ниша: {niche} | Роль клиента: {role}\n"
+            f"{'='*40}\nЛОГ ДИАЛОГА:\n{full_log}\n{'='*40}\n\n"
+            f"ВЕРДИКТ ИИ-АУДИТОРА:\n{clean_judge_result}"
         )
         await asyncio.to_thread(send_email, subject, body)
         await state.clear()
         return
 
-    sys_p = get_system_prompt(role, lang, niche)
-    prompt = build_prompt(sys_p, history)
-    response = await ai(prompt)
-    history.append({"role": "assistant", "content": response})
+    # Ответ клиента
+    sys_inst = get_client_system_instruction(role, lang, niche)
+    response = await generate_response(history, system_instruction=sys_inst, temperature=0.85) # Выше температура = живее диалог
+    
+    history.append({"role": "client", "content": response})
     await state.update_data(history=history, msg_count=count)
-    await message.answer(
-        f"{response}\n\n[{count + 1}/{MAX_STEPS}]"
-    )
+    await message.answer(f"<b>{role}:</b>\n{response}", parse_mode="HTML")
 
-async def health(request):
-    return web.Response(text="OK")
-
-async def landing(request):
+def send_email(subject, body):
+    if not GMAIL_PASS: return
     try:
-        with open(INDEX_HTML, "r", encoding="utf-8") as f:
-            html = f.read()
-        return web.Response(text=html, content_type="text/html", charset="utf-8")
-    except FileNotFoundError:
-        return web.Response(text="AI Sales Simulator — Telegram Bot is running!", content_type="text/html")
+        msg = MIMEMultipart()
+        msg["From"] = msg["To"] = ADMIN_EMAIL
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(ADMIN_EMAIL, GMAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+    except Exception as e: logging.error(f"Mail error: {e}")
 
-async def main():
-    app = web.Application()
-    app.router.add_get("/", landing)
-    app.router.add_get("/api/healthz", health)
+app = FastAPI()
+@app.get("/")
+async def landing(): return HTMLResponse("Bot is running!")
+@app.post(WEBHOOK_PATH)
+async def tg_webhook(request: Request):
+    await dp.feed_update(bot, types.Update(**await request.json()))
+    return "OK"
 
-    if IS_PROD:
-        logging.info(f"Production mode: webhook at {WEBHOOK_URL}")
-        await bot.set_webhook(WEBHOOK_URL)
-        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
-        setup_application(app, dp, bot=bot)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        await web.TCPSite(runner, "0.0.0.0", PORT).start()
-        logging.info(f"Webhook server on port {PORT}")
-        await asyncio.Event().wait()
-    else:
-        mode = "Railway" if IS_RAILWAY else "Development"
-        logging.info(f"{mode} mode: polling on port {PORT}")
-        runner = web.AppRunner(app)
-        await runner.setup()
-        await web.TCPSite(runner, "0.0.0.0", PORT).start()
-        logging.info(f"Web server on port {PORT}")
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+@app.on_event("startup")
+async def on_startup():
+    if IS_PROD and WEBHOOK_URL: await bot.set_webhook(WEBHOOK_URL)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    import uvicorn
+    if IS_PROD: uvicorn.run(app, host="0.0.0.0", port=PORT)
+    else: asyncio.run(dp.start_polling(bot))
         
