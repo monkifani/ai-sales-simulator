@@ -1,205 +1,85 @@
+
+app = FastAPI()
+
+LANDING_HTML = """
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gemini AI Sales Simulator</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      min-height: 100vh;
-      background: #0d0d0f;
-      color: #e8e8f0;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-      overflow: hidden;
-    }
-
-    /* Animated background glow */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 60% 50% at 20% 30%, rgba(99, 60, 220, 0.15) 0%, transparent 70%),
-        radial-gradient(ellipse 50% 40% at 80% 70%, rgba(30, 150, 255, 0.12) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .card {
-      position: relative;
-      max-width: 560px;
-      width: 100%;
-      text-align: center;
-      animation: fadeUp 0.7s ease both;
-    }
-
-    /* Badge */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(99, 60, 220, 0.18);
-      border: 1px solid rgba(99, 60, 220, 0.4);
-      border-radius: 999px;
-      padding: 5px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      color: #a78bfa;
-      text-transform: uppercase;
-      margin-bottom: 1.6rem;
-    }
-    .badge-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: #a78bfa;
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    h1 {
-      font-size: clamp(2rem, 6vw, 3rem);
-      font-weight: 800;
-      line-height: 1.15;
-      letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #ffffff 0%, #a78bfa 50%, #60a5fa 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 1rem;
-    }
-
-    .subtitle {
-      font-size: 1.05rem;
-      color: #9090a8;
-      line-height: 1.65;
-      margin-bottom: 2.4rem;
-      max-width: 420px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    /* Feature pills */
-    .features {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 8px;
-      margin-bottom: 2.6rem;
-    }
-    .feature {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px;
-      padding: 6px 12px;
-      font-size: 12.5px;
-      color: #b0b0c8;
-    }
-
-    /* CTA Button */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      background: linear-gradient(135deg, #6d28d9, #2563eb);
-      color: #fff;
-      text-decoration: none;
-      font-size: 1.05rem;
-      font-weight: 700;
-      padding: 16px 40px;
-      border-radius: 14px;
-      box-shadow: 0 0 32px rgba(99, 60, 220, 0.4), 0 4px 20px rgba(0,0,0,0.4);
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
-      letter-spacing: 0.01em;
-    }
-    .btn:hover {
-      transform: translateY(-2px) scale(1.03);
-      box-shadow: 0 0 48px rgba(99, 60, 220, 0.6), 0 8px 28px rgba(0,0,0,0.4);
-    }
-    .btn:active { transform: scale(0.98); }
-
-    .btn svg { width: 22px; height: 22px; flex-shrink: 0; }
-
-    /* Stats row */
-    .stats {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      margin-top: 2.8rem;
-      padding-top: 2rem;
-      border-top: 1px solid rgba(255,255,255,0.06);
-    }
-    .stat-label { font-size: 11px; color: #606078; margin-top: 2px; }
-    .stat-value { font-size: 1.3rem; font-weight: 700; color: #d0d0e8; }
-
-    /* Footer */
-    .footer {
-      margin-top: 2.4rem;
-      font-size: 11.5px;
-      color: #404058;
-    }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(24px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuditCore AI | Отбор менеджеров по продажам</title>
+    <style>
+        :root { --bg-color: #050a15; --text-main: #ffffff; --text-muted: #8b9bb4; --accent-glow: #00d2ff; --accent-dark: #005ce6; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); line-height: 1.6; overflow-x: hidden; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 5%; background: rgba(5, 10, 21, 0.8); backdrop-filter: blur(10px); position: fixed; width: 100%; top: 0; z-index: 100; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .contact-btn { background: linear-gradient(90deg, var(--accent-dark), var(--accent-glow)); color: #fff; padding: 10px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0, 210, 255, 0.2); }
+        .contact-btn:hover { box-shadow: 0 4px 25px rgba(0, 210, 255, 0.4); transform: translateY(-2px); }
+        .hero { padding: 150px 5% 100px; display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 1000px; margin: 0 auto; }
+        .logo { width: 160px; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 24px; box-shadow: 0 0 30px rgba(0, 210, 255, 0.15); border: 1px solid rgba(0, 210, 255, 0.3); margin-bottom: 30px; }
+        .mvp-badge { background: rgba(0, 210, 255, 0.1); color: var(--accent-glow); padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 20px; border: 1px solid rgba(0, 210, 255, 0.2); display: inline-block; }
+        h1 { font-size: 3.5rem; margin-bottom: 20px; background: linear-gradient(90deg, #fff, var(--accent-glow)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.2; }
+        .subtitle { font-size: 1.2rem; color: var(--text-muted); max-width: 600px; margin-bottom: 50px; }
+        .content-section { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 0 5% 100px; max-width: 1200px; margin: 0 auto; }
+        .card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); padding: 40px; border-radius: 16px; transition: transform 0.3s ease; }
+        .card:hover { transform: translateY(-5px); border-color: rgba(0, 210, 255, 0.2); background: rgba(255, 255, 255, 0.03); }
+        .card h3 { color: var(--accent-glow); font-size: 1.5rem; margin-bottom: 20px; }
+        .card p { color: var(--text-muted); font-size: 1.05rem; }
+        footer { text-align: center; padding: 40px 20px; border-top: 1px solid rgba(255, 255, 255, 0.05); color: var(--text-muted); font-size: 0.9rem; }
+        @media (max-width: 768px) { h1 { font-size: 2.5rem; } .content-section { grid-template-columns: 1fr; } }
+    </style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">
-      <span class="badge-dot"></span>
-      Powered by Gemini AI
-    </div>
-
-    <h1>AI Sales Simulator</h1>
-
-    <p class="subtitle">
-      Тренируй навыки продаж в диалоге с реалистичными AI-клиентами.
-      Получай честный аудит по 9 модулям после каждой сессии.
-    </p>
-
-    <div class="features">
-      <span class="feature">🎭 3 типа клиентов</span>
-      <span class="feature">🌐 Русский / Қазақша</span>
-      <span class="feature">📦 Любая ниша</span>
-      <span class="feature">🧑‍⚖️ Аудит по 9 модулям</span>
-      <span class="feature">📧 Отчёт на email</span>
-    </div>
-
-    <a class="btn" href="https://t.me/ProductAI_Senior_Bot" target="_blank" rel="noopener">
-      <!-- Telegram icon -->
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-      </svg>
-      Открыть в Telegram
-    </a>
-
-    <div class="stats">
-      <div>
-        <div class="stat-value">6</div>
-        <div class="stat-label">сообщений / сессия</div>
-      </div>
-      <div>
-        <div class="stat-value">9</div>
-        <div class="stat-label">модулей аудита</div>
-      </div>
-      <div>
-        <div class="stat-value">3</div>
-        <div class="stat-label">роли клиентов</div>
-      </div>
-    </div>
-
-    <p class="footer">@ProductAI_Senior_Bot · Gemini 2.5 Flash</p>
-  </div>
+    <header>
+        <div style="font-weight: 700; font-size: 1.2rem; letter-spacing: 1px;">AuditCore AI</div>
+        <a href="mailto:monkifani@gmail.com" class="contact-btn">Связаться с нами</a>
+    </header>
+    <section class="hero">
+        <img src="/1775141753778.png" alt="AuditCore AI Logo" class="logo">
+        <div class="mvp-badge">MVP Status</div>
+        <h1>Аудит и отбор сейлз-менеджеров</h1>
+        <p class="subtitle">Интеллектуальная система оценки компетенций отдела продаж. Мы не тренируем — мы находим тех, кто действительно умеет продавать.</p>
+    </section>
+    <section class="content-section">
+        <div class="card">
+            <h3>Проблема</h3>
+            <p>Стандартные собеседования и резюме не показывают реальных навыков менеджера по продажам. Компании тратят месяцы и тысячи долларов на онбординг кандидатов, которые в итоге "сливают" лидов при первых же реальных возражениях клиента.</p>
+        </div>
+        <div class="card">
+            <h3>Решение AuditCore AI</h3>
+            <p>Глубокая ИИ-симуляция рабочих ситуаций. Кандидат проходит через стресс-тесты и сложные диалоги с нашим ИИ-клиентом. Система анализирует каждое слово, отработку возражений и закрытие сделки, выдавая вам детализированный аудит компетенций еще до этапа найма.</p>
+        </div>
+    </section>
+    <footer>
+        <p>Все права защищены © 2026 AuditCore AI</p>
+    </footer>
 </body>
 </html>
+"""
+
+@app.get("/")
+async def render_landing():
+    return HTMLResponse(content=LANDING_HTML)
+
+@app.get("/1775141753778.png")
+async def serve_logo():
+    return FileResponse("1775141753778.png")
+
+@app.post(WEBHOOK_PATH)
+async def bot_webhook(request: Request):
+    # Этот эндпоинт будет принимать запросы от Телеграма
+    update = types.Update.model_validate(await request.json(), context={"bot": bot})
+    await dp.feed_update(bot, update)
+    return {"ok": True}
+
+@app.on_event("startup")
+async def on_startup():
+    if WEBHOOK_URL:
+        await bot.set_webhook(WEBHOOK_URL)
+        logging.info(f"Webhook set to {WEBHOOK_URL}")
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot.delete_webhook()
+   
+
