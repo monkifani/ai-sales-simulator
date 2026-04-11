@@ -22,6 +22,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from contextlib import asynccontextmanager
 
+# ============================================================
+# КОНФИГУРАЦИЯ ДЛЯ VERCEL
+# ============================================================
+
 logging.basicConfig(level=logging.INFO)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -29,20 +33,20 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_EMAIL = "monkifani@gmail.com"
 GMAIL_PASS = os.getenv("GMAIL_PASSWORD")
 
-IS_PROD = os.getenv("IS_PROD") == "1"
-IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT"))
-IS_RENDER = bool(os.getenv("RENDER"))
-PORT = int(os.getenv("PORT", "8080" if (IS_PROD or IS_RAILWAY or IS_RENDER) else "8009"))
-
-REPLIT_DOMAIN = os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip()
-RENDER_DOMAIN = os.getenv("RENDER_EXTERNAL_URL", "")
+# Определение окружения Vercel
+IS_VERCEL = bool(os.getenv("VERCEL"))
+VERCEL_URL = os.getenv("VERCEL_URL", "")
 WEBHOOK_PATH = "/api/tgwebhook"
 
-if RENDER_DOMAIN:
-    WEBHOOK_URL = f"{RENDER_DOMAIN}{WEBHOOK_PATH}"
-elif REPLIT_DOMAIN:
-    WEBHOOK_URL = f"https://{REPLIT_DOMAIN}{WEBHOOK_PATH}"
+# Формируем URL Webhook для Telegram
+if IS_VERCEL:
+    # Vercel присылает URL без протокола, добавляем https
+    if VERCEL_URL and not VERCEL_URL.startswith("http"):
+        WEBHOOK_URL = f"https://{VERCEL_URL}{WEBHOOK_PATH}"
+    else:
+        WEBHOOK_URL = VERCEL_URL + WEBHOOK_PATH if VERCEL_URL else None
 else:
+    # Локальный запуск (через uvicorn)
     WEBHOOK_URL = None
 
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -56,7 +60,7 @@ MIN_MESSAGE_LENGTH = 3
 BOT_VERSION = "2.0.0"
 
 # ============================================================
-# ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ ПРИ СТАРТЕ
+# ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ
 # ============================================================
 
 WELCOME_INFO = {
@@ -85,7 +89,7 @@ WELCOME_INFO = {
 }
 
 # ============================================================
-# БАЗА ДАННЫХ (in-memory, для MVP)
+# БАЗА ДАННЫХ
 # ============================================================
 
 class Database:
@@ -259,9 +263,7 @@ TEXTS = {
         "invalid_code": "Неверный код компании или лимит участников исчерпан.",
         "ask_company_name": "Введите название вашей компании:",
         "ask_company_code": "Введите код компании от вашего руководителя:",
-        "welcome_menu": (
-            "Выберите действие:"
-        ),
+        "welcome_menu": "Выберите действие:",
         "no_company": "Вы не привязаны к компании. Используйте /start",
         "leaderboard_title": "РЕЙТИНГ МЕНЕДЖЕРОВ\nКомпания: {company}\n\n",
         "leaderboard_row": "{medal} {pos}. {name} - {avg} баллов (лучший: {best}, сессий: {sessions})\n",
@@ -333,7 +335,7 @@ TEXTS = {
 }
 
 # ============================================================
-# НОВЫЕ ПРОМПТЫ: МАКСИМАЛЬНО РЕАЛИСТИЧНЫЕ
+# ПРОМПТЫ
 # ============================================================
 
 def get_global_client_rules(lang):
@@ -681,7 +683,7 @@ def generate_pdf_report(session_data: dict) -> bytes:
     return "\n".join(report).encode("utf-8")
 
 # ============================================================
-# ОТПРАВКА EMAIL — ТОЛЬКО ТЕБЕ И КОМПАНИИ
+# ОТПРАВКА EMAIL
 # ============================================================
 
 async def send_results_to_admin_email(session_data: dict):
@@ -730,7 +732,6 @@ AI-ДЕТЕКТ АНАЛИЗ:
 
         msg.attach(MIMEText(body, "plain", "utf-8"))
 
-        # Прикрепляем txt-отчет
         attachment = MIMEText(report_bytes.decode("utf-8"), "plain", "utf-8")
         attachment.add_header(
             "Content-Disposition",
@@ -774,7 +775,6 @@ async def send_results_to_company_admins(session_data: dict):
             filename=f"report_{session_data.get('user_id', 'unknown')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         )
 
-        # Краткая сводка для сообщения
         summary = (
             f"<b>НОВЫЙ ОТЧЕТ — {company['name']}</b>\n\n"
             f"Менеджер: {session_data.get('user_name', 'N/A')}\n"
@@ -1021,7 +1021,7 @@ async def show_leaderboard(call: types.CallbackQuery, state: FSMContext):
     await call.message.edit_text(text)
 
 # ============================================================
-# ПАНЕЛЬ УПРАВЛЕНИЯ (АДМИН)
+# ПАНЕЛЬ УПРАВЛЕНИЯ
 # ============================================================
 
 @dp.callback_query(F.data == "action_admin")
@@ -1232,78 +1232,16 @@ async def finish_simulation(message: types.Message, state: FSMContext):
 
     db.save_session(session_data)
 
-    # Пользователю — только короткое сообщение
     end_msg = TEXTS[lang]["end_user_m"] if gender == "m" else TEXTS[lang]["end_user_f"]
     await message.answer(end_msg)
 
-    # Полные результаты — тебе на почту + админам компании в ТГ
     await deliver_results(session_data)
 
     await state.clear()
     await show_main_menu(message, lang, message.from_user.id)
 
 # ============================================================
-# ЛЕНДИНГ (FastAPI)
-# ============================================================
-
-LANDING_HTML = """
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AuditCore AI | Отбор менеджеров по продажам</title>
-    <style>
-        :root { --bg-color: #050a15; --text-main: #ffffff; --text-muted: #8b9bb4; --accent-glow: #00d2ff; --accent-dark: #005ce6; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
-        body { background-color: var(--bg-color); color: var(--text-main); line-height: 1.6; overflow-x: hidden; }
-        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 5%; background: rgba(5, 10, 21, 0.8); backdrop-filter: blur(10px); position: fixed; width: 100%; top: 0; z-index: 100; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-        .contact-btn { background: linear-gradient(90deg, var(--accent-dark), var(--accent-glow)); color: #fff; padding: 10px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0, 210, 255, 0.2); }
-        .contact-btn:hover { box-shadow: 0 4px 25px rgba(0, 210, 255, 0.4); transform: translateY(-2px); }
-        .hero { padding: 150px 5% 100px; display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 1000px; margin: 0 auto; }
-        .logo { width: 160px; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 24px; box-shadow: 0 0 30px rgba(0, 210, 255, 0.15); border: 1px solid rgba(0, 210, 255, 0.3); margin-bottom: 30px; }
-        .mvp-badge { background: rgba(0, 210, 255, 0.1); color: var(--accent-glow); padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 20px; border: 1px solid rgba(0, 210, 255, 0.2); display: inline-block; }
-        h1 { font-size: 3.5rem; margin-bottom: 20px; background: linear-gradient(90deg, #fff, var(--accent-glow)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.2; }
-        .subtitle { font-size: 1.2rem; color: var(--text-muted); max-width: 600px; margin-bottom: 50px; }
-        .content-section { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 0 5% 100px; max-width: 1200px; margin: 0 auto; }
-        .card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); padding: 40px; border-radius: 16px; transition: transform 0.3s ease; }
-        .card:hover { transform: translateY(-5px); border-color: rgba(0, 210, 255, 0.2); background: rgba(255, 255, 255, 0.03); }
-        .card h3 { color: var(--accent-glow); font-size: 1.5rem; margin-bottom: 20px; }
-        .card p { color: var(--text-muted); font-size: 1.05rem; }
-        footer { text-align: center; padding: 40px 20px; border-top: 1px solid rgba(255, 255, 255, 0.05); color: var(--text-muted); font-size: 0.9rem; }
-        @media (max-width: 768px) { h1 { font-size: 2.5rem; } .content-section { grid-template-columns: 1fr; } }
-    </style>
-</head>
-<body>
-    <header>
-        <div style="font-weight: 700; font-size: 1.2rem; letter-spacing: 1px;">AuditCore AI</div>
-        <a href="mailto:monkifani@gmail.com" class="contact-btn">Связаться с нами</a>
-    </header>
-    <section class="hero">
-        <img src="/1775141753778.png" alt="AuditCore AI Logo" class="logo">
-        <div class="mvp-badge">MVP Status</div>
-        <h1>Аудит и отбор сейлз-менеджеров</h1>
-        <p class="subtitle">Интеллектуальная система оценки компетенций отдела продаж. Мы не тренируем - мы находим тех, кто действительно умеет продавать.</p>
-    </section>
-    <section class="content-section">
-        <div class="card">
-            <h3>Проблема</h3>
-            <p>Стандартные собеседования и резюме не показывают реальных навыков менеджера по продажам. Компании тратят месяцы и тысячи долларов на онбординг кандидатов, которые в итоге "сливают" лидов при первых же реальных возражениях клиента.</p>
-        </div>
-        <div class="card">
-            <h3>Решение AuditCore AI</h3>
-            <p>Глубокая ИИ-симуляция рабочих ситуаций. Кандидат проходит через стресс-тесты и сложные диалоги с нашим ИИ-клиентом. Система анализирует каждое слово, отработку возражений и закрытие сделки, выдавая вам детализированный аудит компетенций еще до этапа найма.</p>
-        </div>
-    </section>
-    <footer>
-        <p>Все права защищены 2026 AuditCore AI</p>
-    </footer>
-</body>
-</html>
-"""
-
-# ============================================================
-# FASTAPI + LIFESPAN (исправлено для Render)
+# FASTAPI + LIFESPAN (Vercel Ready)
 # ============================================================
 
 @asynccontextmanager
@@ -1313,11 +1251,11 @@ async def lifespan(app: FastAPI):
         await bot.set_webhook(WEBHOOK_URL)
         logging.info(f"Webhook установлен: {WEBHOOK_URL}")
     else:
-        logging.warning("WEBHOOK_URL не задан — webhook не установлен")
+        logging.warning("WEBHOOK_URL не задан")
     yield
     # Shutdown
     await bot.delete_webhook()
-    logging.info("Webhook удален, бот остановлен")
+    logging.info("Bot shutdown")
 
 app = FastAPI(lifespan=lifespan)
 
