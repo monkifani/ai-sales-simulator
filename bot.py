@@ -15,42 +15,49 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from google import genai
-from google.genai import types as genai_types
+
+import google.generativeai as genai
+
+# === ЛОГИРОВАНИЕ ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # === КОНФИГУРАЦИЯ ===
-logging.basicConfig(level=logging.INFO)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}" if RENDER_URL else None
 
-if not TOKEN or not GEMINI_API_KEY:
-    raise ValueError("❌ Задай TELEGRAM_TOKEN и GEMINI_API_KEY в переменных окружения!")
+if not TOKEN:
+    raise ValueError("❌ TELEGRAM_TOKEN не задан!")
+if not GEMINI_API_KEY:
+    raise ValueError("❌ GEMINI_API_KEY не задан!")
 
-# Пути для БД (важно для Render Disk)
+# Настройка Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Пути для БД
 DATA_DIR = Path("/app/data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "bot.db"
 
-client = genai.Client(api_key=GEMINI_API_KEY)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# === БАЗА ДАННЫХ (SQLite) ===
+# === БАЗА ДАННЫХ ===
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
-                user_id INTEGER,
+                user_id INTEGER PRIMARY KEY,
                 history TEXT,
                 step INTEGER,
-                last_ts REAL,
-                PRIMARY KEY (user_id)
+                last_ts REAL
             )
         """)
         await db.commit()
+    logger.info("✅ База данных инициализирована")
 
 async def get_session(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -74,29 +81,27 @@ async def clear_session(user_id: int):
         await db.commit()
 
 # === AI ЛОГИКА ===
-async def ai_generate(prompt: str, system: str = None) -> str:
+SYSTEM_PROMPT = """Ты клиент в мессенджере. Роль: Инвестор Баке, 50 лет.
+Пиши как живой человек: коротко, 1-2 предложения, без эмодзи, без списков, без звездочек.
+Будь скептичным, задавай вопросы по делу. Не сдавайся сразу.
+Выдавай только текст сообщения, без пояснений."""
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=SYSTEM_PROMPT
+)
+
+async def ai_generate(prompt: str) -> str:
     try:
-        config = genai_types.GenerateContentConfig(temperature=0.7)
-        if system:
-            config.system_instruction = system
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-1.5-flash",
-            contents=prompt,
-            config=config
-        )
+        response = await model.generate_content_async(prompt)
         text = response.text.strip()
-        text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL)
+        # Очистка от артефактов
         text = re.sub(r'\*.*?\*', '', text)
+        text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
         return text if text else "..."
     except Exception as e:
-        logging.error(f"AI Error: {e}")
-        return "Ошибка AI."
-
-CLIENT_SYSTEM = """Ты клиент в мессенджере. Роль: Инвестор Баке.
-Пиши как живой человек: коротко, 1-2 предложения, без эмодзи, без списков.
-Будь скептичным, задавай вопросы по делу.
-Выдавай только текст сообщения."""
+        logger.exception(f"AI Error: {e}")
+        return f"❌ Ошибка AI: {str(e)}"
 
 # === FSM ===
 class SimState(StatesGroup):
@@ -110,10 +115,20 @@ async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
     await clear_session(m.from_user.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Начать симуляцию", callback_data="start_sim")]
+        [InlineKeyboardButton(text="🚀 Начать симуляцию", callback_data="start_sim")],
+        [InlineKeyboardButton(text="🧪 Проверить AI ключ", callback_data="test_ai")]
     ])
     await m.answer("🤖 <b>SalesAI Demo</b>\n\nНажми кнопку, чтобы начать диалог с AI-клиентом.", reply_markup=kb, parse_mode="HTML")
     await state.set_state(SimState.menu)
+
+@dp.callback_query(F.data == "test_ai")
+async def test_ai(c: types.CallbackQuery):
+    await c.answer("Проверка...")
+    result = await ai_generate("Привет, скажи 'OK' если работаешь.")
+    if "Ошибка" in result:
+        await c.message.answer(f"❌ AI не работает:\n<code>{result}</code>", parse_mode="HTML")
+    else:
+        await c.message.answer(f"✅ AI работает!\nОтвет: {result}")
 
 @dp.callback_query(F.data == "start_sim")
 async def start_sim(c: types.CallbackQuery, state: FSMContext):
@@ -130,7 +145,13 @@ async def set_niche(m: types.Message, state: FSMContext):
     await m.answer("🟢 <b>Симуляция началась!</b>\n\nКлиент на связи. Жду ваше первое сообщение.", parse_mode="HTML")
     
     # Первое сообщение от клиента
-    first_msg = await ai_generate(f"Менеджер предлагает: {niche}. Напиши первое сообщение.", system=CLIENT_SYSTEM)
+    first_msg = await ai_generate(f"Менеджер предлагает: {niche}. Напиши первое сообщение.")
+    
+    if first_msg.startswith("❌ Ошибка"):
+        await m.answer(first_msg)
+        await state.clear()
+        return
+    
     history = [{"role": "client", "content": first_msg}]
     await save_session(m.from_user.id, history, 0)
     
@@ -157,9 +178,15 @@ async def handle_dialogue(m: types.Message, state: FSMContext):
     # Индикатор "печатает..."
     await bot.send_chat_action(chat_id=m.chat.id, action="typing")
     
-    # Ответ AI
-    prompt_text = "\n".join([f"{h['role']}: {h['content']}" for h in history])
-    reply = await ai_generate(prompt_text, system=CLIENT_SYSTEM)
+    # Формируем промпт
+    dialogue_text = "\n".join([f"{h['role']}: {h['content']}" for h in history])
+    reply = await ai_generate(dialogue_text)
+    
+    if reply.startswith("❌ Ошибка"):
+        await m.answer(reply)
+        await clear_session(m.from_user.id)
+        await state.clear()
+        return
     
     history.append({"role": "client", "content": reply})
     await save_session(m.from_user.id, history, step)
@@ -177,8 +204,13 @@ async def handle_dialogue(m: types.Message, state: FSMContext):
 async def lifespan(app: FastAPI):
     await init_db()
     if WEBHOOK_URL:
-        await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
-        logging.info(f"Webhook set: {WEBHOOK_URL}")
+        try:
+            await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+            logger.info(f"✅ Webhook установлен: {WEBHOOK_URL}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка webhook: {e}")
+    else:
+        logger.warning("⚠️ WEBHOOK_URL не задан. Проверь RENDER_EXTERNAL_URL.")
     yield
     await bot.delete_webhook()
 
@@ -186,11 +218,15 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post(WEBHOOK_PATH)
 async def webhook(request: Request):
-    data = await request.json()
-    update = types.Update.model_validate(data, context={"bot": bot})
-    await dp.feed_update(bot, update)
-    return {"ok": True}
+    try:
+        data = await request.json()
+        update = types.Update.model_validate(data, context={"bot": bot})
+        await dp.feed_update(bot, update)
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return {"ok": False}
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "db": str(DB_PATH)}
