@@ -95,7 +95,6 @@ async def ai_generate(prompt: str) -> str:
     try:
         response = await model.generate_content_async(prompt)
         text = response.text.strip()
-        # Очистка от артефактов
         text = re.sub(r'\*.*?\*', '', text)
         text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
         return text if text else "..."
@@ -144,7 +143,6 @@ async def set_niche(m: types.Message, state: FSMContext):
     
     await m.answer("🟢 <b>Симуляция началась!</b>\n\nКлиент на связи. Жду ваше первое сообщение.", parse_mode="HTML")
     
-    # Первое сообщение от клиента
     first_msg = await ai_generate(f"Менеджер предлагает: {niche}. Напиши первое сообщение.")
     
     if first_msg.startswith("❌ Ошибка"):
@@ -175,10 +173,8 @@ async def handle_dialogue(m: types.Message, state: FSMContext):
     step = session["step"] + 1
     history.append({"role": "manager", "content": text})
     
-    # Индикатор "печатает..."
     await bot.send_chat_action(chat_id=m.chat.id, action="typing")
     
-    # Формируем промпт
     dialogue_text = "\n".join([f"{h['role']}: {h['content']}" for h in history])
     reply = await ai_generate(dialogue_text)
     
@@ -193,7 +189,6 @@ async def handle_dialogue(m: types.Message, state: FSMContext):
     
     await m.answer(reply)
     
-    # Завершение через 6 реплик
     if step >= 6:
         await m.answer("🏁 <b>Симуляция завершена.</b>\n\nНажмите /start для новой попытки.", parse_mode="HTML")
         await clear_session(m.from_user.id)
@@ -210,11 +205,21 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ Ошибка webhook: {e}")
     else:
-        logger.warning("⚠️ WEBHOOK_URL не задан. Проверь RENDER_EXTERNAL_URL.")
+        logger.warning("⚠️ WEBHOOK_URL не задан.")
     yield
     await bot.delete_webhook()
+    await bot.session.close()
 
 app = FastAPI(lifespan=lifespan)
+
+# === FIX: Добавлен корневой маршрут для Render Health Check ===
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "SalesAI Bot", "version": "2.1.0"}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "db": str(DB_PATH)}
 
 @app.post(WEBHOOK_PATH)
 async def webhook(request: Request):
@@ -226,7 +231,3 @@ async def webhook(request: Request):
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return {"ok": False}
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "db": str(DB_PATH)}
